@@ -351,6 +351,9 @@
                 progressBar.classList.remove('active');
                 playBtn.disabled = false;
 
+                // Load the audio into the player
+                await loadAudioFromStorage(file.id);
+
                 // Hide download button after success
                 setTimeout(() => {
                     downloadBtn.style.opacity = '0.6';
