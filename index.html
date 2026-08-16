@@ -243,7 +243,6 @@
         </div>
     </div>
 
-    <script src="https://apis.google.com/js/platform.js" async defer></script>
     <script>
         // Google Drive API Configuration
         const GOOGLE_DRIVE_FOLDER_ID = '15ysA_Gw6_Paa2spGJgEIzqdspsKdRJ6u'; // Audiobook folder
@@ -366,50 +365,84 @@
             }
         }
 
-        // Google Authentication using gapi.auth2
+        // Google Authentication - Simple OAuth Implicit Flow
         async function authenticateWithGoogle() {
             return new Promise((resolve, reject) => {
-                // Wait for gapi to load
-                if (typeof gapi === 'undefined' || !gapi.auth2) {
-                    setTimeout(() => authenticateWithGoogle().then(resolve).catch(reject), 500);
+                // Check for stored token first
+                const storedToken = localStorage.getItem(STORAGE_KEYS.authToken);
+                if (storedToken && storedToken !== 'null') {
+                    console.log('Using stored token');
+                    resolve(storedToken);
                     return;
                 }
 
                 try {
-                    // Initialize gapi.auth2
-                    gapi.auth2.init({
-                        client_id: CLIENT_ID,
-                        scope: SCOPES
-                    }).then(function(authInstance) {
-                        // Check if user is already signed in
-                        if (authInstance.isSignedIn.get()) {
-                            const user = authInstance.currentUser.get();
-                            const authResponse = user.getAuthResponse(true);
-                            localStorage.setItem(STORAGE_KEYS.authToken, authResponse.access_token);
-                            resolve(authResponse.access_token);
-                        } else {
-                            // Sign in the user
-                            authInstance.signIn().then(function(user) {
-                                const authResponse = user.getAuthResponse(true);
-                                const accessToken = authResponse.access_token;
+                    // Build OAuth URL
+                    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
+                        `client_id=${encodeURIComponent(CLIENT_ID)}&` +
+                        `redirect_uri=${encodeURIComponent(window.location.origin + window.location.pathname)}&` +
+                        `response_type=token&` +
+                        `scope=${encodeURIComponent(SCOPES)}&` +
+                        `prompt=consent`;
 
-                                if (accessToken) {
-                                    localStorage.setItem(STORAGE_KEYS.authToken, accessToken);
-                                    resolve(accessToken);
-                                } else {
-                                    reject(new Error('No access token received'));
+                    // Open popup
+                    const popup = window.open(authUrl, 'auth_popup', 'width=500,height=600,top=200,left=400');
+
+                    if (!popup) {
+                        reject(new Error('Failed to open authorization window. Please allow popups.'));
+                        return;
+                    }
+
+                    // Listen for hash changes and messages
+                    const checkToken = () => {
+                        try {
+                            // Check URL hash for token
+                            const hash = window.location.hash.substring(1);
+                            if (hash) {
+                                const params = new URLSearchParams(hash);
+                                const token = params.get('access_token');
+                                const error = params.get('error');
+
+                                if (error) {
+                                    reject(new Error(`OAuth error: ${error}`));
+                                    window.location.hash = '';
+                                    clearInterval(hashCheckInterval);
+                                    return;
                                 }
-                            }).catch(function(error) {
-                                console.error('Sign-in error:', error);
-                                reject(new Error(`Sign-in failed: ${error.error || error.message}`));
-                            });
+
+                                if (token) {
+                                    localStorage.setItem(STORAGE_KEYS.authToken, token);
+                                    window.location.hash = '';
+                                    clearInterval(hashCheckInterval);
+                                    if (!popup.closed) popup.close();
+                                    resolve(token);
+                                    return;
+                                }
+                            }
+
+                            // Check if popup closed
+                            if (popup.closed && !window.authTokenReceived) {
+                                clearInterval(hashCheckInterval);
+                                reject(new Error('Authorization cancelled - popup was closed'));
+                            }
+                        } catch (e) {
+                            console.error('Token check error:', e);
                         }
-                    }).catch(function(error) {
-                        console.error('Auth initialization error:', error);
-                        reject(new Error(`Failed to initialize authentication: ${error.message}`));
-                    });
+                    };
+
+                    // Poll for token
+                    const hashCheckInterval = setInterval(checkToken, 300);
+
+                    // Timeout after 5 minutes
+                    setTimeout(() => {
+                        clearInterval(hashCheckInterval);
+                        if (!window.authTokenReceived) {
+                            reject(new Error('Authorization timeout'));
+                        }
+                    }, 300000);
+
                 } catch (error) {
-                    reject(new Error(`Authentication setup error: ${error.message}`));
+                    reject(new Error(`Authentication error: ${error.message}`));
                 }
             });
         }
@@ -417,20 +450,6 @@
         // Get latest audio file from Google Drive
         async function getLatestAudioFileFromDrive(token) {
             try {
-                // Get fresh access token from gapi
-                let accessToken = token;
-                if (typeof gapi !== 'undefined' && gapi.auth2) {
-                    try {
-                        const authInstance = gapi.auth2.getAuthInstance();
-                        if (authInstance && authInstance.isSignedIn.get()) {
-                            const authResponse = authInstance.currentUser.get().getAuthResponse(true);
-                            accessToken = authResponse.access_token;
-                        }
-                    } catch (e) {
-                        console.log('Using provided token');
-                    }
-                }
-
                 const response = await fetch(
                     `https://www.googleapis.com/drive/v3/files?` +
                     `q='${GOOGLE_DRIVE_FOLDER_ID}'+in+parents+and+trashed=false+and+(mimeType='audio/mpeg'+or+mimeType='audio/mp4'+or+mimeType='audio/ogg'+or+mimeType='audio/wav')&` +
@@ -440,7 +459,7 @@
                     `pageSize=1`,
                     {
                         headers: {
-                            'Authorization': `Bearer ${accessToken}`
+                            'Authorization': `Bearer ${token}`
                         }
                     }
                 );
@@ -465,23 +484,9 @@
         // Download file from Google Drive
         async function downloadFileFromDrive(fileId, token) {
             return new Promise((resolve, reject) => {
-                // Get fresh access token from gapi
-                let accessToken = token;
-                if (typeof gapi !== 'undefined' && gapi.auth2) {
-                    try {
-                        const authInstance = gapi.auth2.getAuthInstance();
-                        if (authInstance && authInstance.isSignedIn.get()) {
-                            const authResponse = authInstance.currentUser.get().getAuthResponse(true);
-                            accessToken = authResponse.access_token;
-                        }
-                    } catch (e) {
-                        console.log('Using provided token');
-                    }
-                }
-
                 const xhr = new XMLHttpRequest();
                 xhr.open('GET', `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
-                xhr.setRequestHeader('Authorization', `Bearer ${accessToken}`);
+                xhr.setRequestHeader('Authorization', `Bearer ${token}`);
                 xhr.responseType = 'blob';
 
                 xhr.upload.addEventListener('progress', (event) => {
