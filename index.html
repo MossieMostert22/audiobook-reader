@@ -287,12 +287,16 @@
                 playBtn.disabled = false;
                 statusMessage.textContent = 'Ready to play!';
                 statusMessage.className = 'status-message success';
+                downloadBtn.disabled = true; // Keep download disabled when a file is loaded
+                downloadBtn.classList.add('complete');
+                downloadBtn.textContent = '✓ DOWNLOADED';
 
                 // Try to load the audio from IndexedDB
                 loadAudioFromStorage(savedFileId);
             } else {
                 statusMessage.textContent = 'Click DOWNLOAD to get started';
                 statusMessage.className = 'status-message info';
+                downloadBtn.disabled = false;
             }
 
             // Event listeners
@@ -300,7 +304,39 @@
             playBtn.addEventListener('click', handlePlay);
             stopBtn.addEventListener('click', handleStop);
             audioPlayer.addEventListener('ended', handleAudioEnded);
+
+            // Start checking for new files every 30 seconds
+            checkForNewFile();
+            setInterval(checkForNewFile, 30000);
         });
+
+        // Check if a new file is available on Google Drive
+        async function checkForNewFile() {
+            try {
+                const savedFileId = localStorage.getItem(STORAGE_KEYS.currentFileId);
+                const token = localStorage.getItem(STORAGE_KEYS.authToken);
+
+                // Only check if we have a saved file and a token
+                if (!savedFileId || !token) {
+                    return;
+                }
+
+                // Fetch latest file from Drive
+                const latestFile = await getLatestAudioFileFromDrive(token);
+
+                if (latestFile && latestFile.id !== savedFileId) {
+                    // New file available!
+                    downloadBtn.disabled = false;
+                    downloadBtn.classList.remove('complete');
+                    downloadBtn.textContent = '📥 DOWNLOAD';
+                    statusMessage.textContent = '📢 New audiobook available!';
+                    statusMessage.className = 'status-message info';
+                    console.log('New file detected:', latestFile.name);
+                }
+            } catch (error) {
+                console.log('Could not check for new files (may need authentication):', error.message);
+            }
+        }
 
         // Handle Download
         async function handleDownload() {
@@ -346,6 +382,7 @@
                 bookTitle.textContent = file.name;
                 downloadBtn.classList.add('complete');
                 downloadBtn.textContent = '✓ DOWNLOADED';
+                downloadBtn.disabled = true; // Keep disabled until a new file appears
                 statusMessage.textContent = `"${file.name}" is ready!`;
                 statusMessage.className = 'status-message success';
                 progressBar.classList.remove('active');
@@ -353,11 +390,6 @@
 
                 // Load the audio into the player
                 await loadAudioFromStorage(file.id);
-
-                // Hide download button after success
-                setTimeout(() => {
-                    downloadBtn.style.opacity = '0.6';
-                }, 500);
 
             } catch (error) {
                 console.error('Download error:', error);
