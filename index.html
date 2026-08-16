@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#1a1a1a">
+    <meta name="description" content="Simple audiobook player - Download, Play, Continue">
+    <link rel="manifest" href="manifest.json">
+    <title>Audiobook Reader</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #000;
+            color: #fff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            background-color: #1a1a1a;
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.8);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .header h1 {
+            font-size: 48px;
+            font-weight: bold;
+            color: #fff;
+            margin-bottom: 10px;
+        }
+
+        .book-title {
+            font-size: 28px;
+            color: #aaa;
+            word-wrap: break-word;
+            margin-bottom: 20px;
+            min-height: 80px;
+        }
+
+        .status-message {
+            font-size: 20px;
+            color: #888;
+            margin-bottom: 20px;
+            min-height: 40px;
+        }
+
+        .status-message.success {
+            color: #4ade80;
+            font-weight: bold;
+        }
+
+        .status-message.error {
+            color: #ff6b6b;
+            font-weight: bold;
+        }
+
+        .status-message.info {
+            color: #60a5fa;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 30px;
+            background-color: #333;
+            border-radius: 15px;
+            overflow: hidden;
+            margin-bottom: 30px;
+            display: none;
+        }
+
+        .progress-bar.active {
+            display: block;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background-color: #3b82f6;
+            width: 0%;
+            transition: width 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-size: 16px;
+            font-weight: bold;
+        }
+
+        .buttons-container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        button {
+            padding: 30px;
+            font-size: 36px;
+            font-weight: bold;
+            border: none;
+            border-radius: 15px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            min-height: 100px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        button:active {
+            transform: scale(0.98);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        #downloadBtn {
+            background-color: #3b82f6;
+            color: #fff;
+            font-size: 40px;
+        }
+
+        #downloadBtn:hover:not(:disabled) {
+            background-color: #2563eb;
+            box-shadow: 0 0 20px rgba(59, 130, 246, 0.5);
+        }
+
+        #downloadBtn.complete {
+            background-color: #4ade80;
+            color: #000;
+            box-shadow: 0 0 30px rgba(74, 222, 128, 0.6);
+        }
+
+        #playBtn {
+            background-color: #10b981;
+            color: #fff;
+            font-size: 50px;
+        }
+
+        #playBtn:hover:not(:disabled) {
+            background-color: #059669;
+            box-shadow: 0 0 20px rgba(16, 185, 129, 0.5);
+        }
+
+        #stopBtn {
+            background-color: #ef4444;
+            color: #fff;
+            font-size: 40px;
+        }
+
+        #stopBtn:hover:not(:disabled) {
+            background-color: #dc2626;
+            box-shadow: 0 0 20px rgba(239, 68, 68, 0.5);
+        }
+
+        #stopBtn:disabled {
+            background-color: #6b7280;
+        }
+
+        .info-box {
+            background-color: #333;
+            padding: 20px;
+            border-radius: 15px;
+            margin-top: 30px;
+            font-size: 16px;
+            line-height: 1.6;
+            color: #ccc;
+        }
+
+        .info-box strong {
+            color: #fff;
+        }
+
+        audio {
+            width: 100%;
+            margin-top: 20px;
+            height: 50px;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        /* Accessibility - high contrast */
+        @media (prefers-contrast: more) {
+            button {
+                border: 3px solid #fff;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📚 Audiobook</h1>
+            <div class="book-title" id="bookTitle">Waiting for Google Drive setup...</div>
+            <div class="status-message" id="statusMessage"></div>
+        </div>
+
+        <div class="progress-bar" id="progressBar">
+            <div class="progress-fill" id="progressFill">0%</div>
+        </div>
+
+        <div class="buttons-container">
+            <button id="downloadBtn" title="Download audiobook from Google Drive">
+                📥 DOWNLOAD
+            </button>
+            <button id="playBtn" disabled title="Play audiobook">
+                ▶ PLAY
+            </button>
+            <button id="stopBtn" disabled title="Stop and remember where you stopped">
+                ⏹ STOP
+            </button>
+        </div>
+
+        <audio id="audioPlayer"></audio>
+
+        <div class="info-box">
+            <strong>How to use:</strong><br>
+            1. Click <strong>DOWNLOAD</strong> to get the audiobook from Google Drive<br>
+            2. When it turns green, click <strong>PLAY</strong><br>
+            3. Click <strong>STOP</strong> when you're done reading<br>
+            4. Tomorrow, just click <strong>PLAY</strong> - it will continue where you left off!
+        </div>
+    </div>
+
+    <script>
+        // Google Drive API Configuration
+        const GOOGLE_DRIVE_FOLDER_ID = '15ysA_Gw6_Paa2spGJgEIzqdspsKdRJ6u'; // Audiobook folder
+        const CLIENT_ID = '365125217466-8kd70uplgk8lm8s619e2n47go417a63g.apps.googleusercontent.com'; // Will be replaced after Google Cloud setup
+        const API_KEY = 'YOUR_API_KEY'; // Will be replaced after Google Cloud setup
+        const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
+
+        // DOM Elements
+        const downloadBtn = document.getElementById('downloadBtn');
+        const playBtn = document.getElementById('playBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const audioPlayer = document.getElementById('audioPlayer');
+        const bookTitle = document.getElementById('bookTitle');
+        const statusMessage = document.getElementById('statusMessage');
+        const progressBar = document.getElementById('progressBar');
+        const progressFill = document.getElementById('progressFill');
+
+        // Storage keys
+        const STORAGE_KEYS = {
+            currentFileId: 'currentFileId',
+            currentFileName: 'currentFileName',
+            playbackPosition: 'playbackPosition',
+            authToken: 'authToken'
+        };
+
+        // Initialize app
+        document.addEventListener('DOMContentLoaded', async () => {
+            // Register service worker
+            if ('serviceWorker' in navigator) {
+                try {
+                    await navigator.serviceWorker.register('service-worker.js');
+                    console.log('Service Worker registered');
+                } catch (err) {
+                    console.error('Service Worker registration failed:', err);
+                }
+            }
+
+            // Load saved playback position if audio is already loaded
+            const savedFileId = localStorage.getItem(STORAGE_KEYS.currentFileId);
+            if (savedFileId) {
+                const savedFileName = localStorage.getItem(STORAGE_KEYS.currentFileName);
+                bookTitle.textContent = savedFileName || 'Audiobook';
+                playBtn.disabled = false;
+                statusMessage.textContent = 'Ready to play!';
+                statusMessage.className = 'status-message success';
+
+                // Try to load the audio from IndexedDB
+                loadAudioFromStorage(savedFileId);
+            } else {
+                statusMessage.textContent = 'Click DOWNLOAD to get started';
+                statusMessage.className = 'status-message info';
+            }
+
+            // Event listeners
+            downloadBtn.addEventListener('click', handleDownload);
+            playBtn.addEventListener('click', handlePlay);
+            stopBtn.addEventListener('click', handleStop);
+            audioPlayer.addEventListener('ended', handleAudioEnded);
+        });
+
+        // Handle Download
+        async function handleDownload() {
+            downloadBtn.disabled = true;
+            statusMessage.textContent = 'Authenticating with Google...';
+            statusMessage.className = 'status-message info';
+
+            try {
+                // Step 1: Check if we have a valid auth token
+                let token = localStorage.getItem(STORAGE_KEYS.authToken);
+
+                if (!token) {
+                    // Redirect to Google OAuth (this will be implemented with actual OAuth flow)
+                    statusMessage.textContent = 'Opening Google login...';
+                    token = await authenticateWithGoogle();
+                }
+
+                if (!token) {
+                    throw new Error('Failed to authenticate with Google');
+                }
+
+                // Step 2: Fetch the most recent audio file from Google Drive folder
+                statusMessage.textContent = 'Fetching audiobook from Google Drive...';
+                const file = await getLatestAudioFileFromDrive(token);
+
+                if (!file) {
+                    throw new Error('No audiobook found in Google Drive folder');
+                }
+
+                // Step 3: Download the file
+                statusMessage.textContent = `Downloading: ${file.name}...`;
+                progressBar.classList.add('active');
+
+                const fileData = await downloadFileFromDrive(file.id, token);
+
+                // Step 4: Save to IndexedDB for offline access
+                await saveAudioToStorage(file.id, file.name, fileData);
+
+                // Step 5: Update UI
+                localStorage.setItem(STORAGE_KEYS.currentFileId, file.id);
+                localStorage.setItem(STORAGE_KEYS.currentFileName, file.name);
+
+                bookTitle.textContent = file.name;
+                downloadBtn.classList.add('complete');
+                downloadBtn.textContent = '✓ DOWNLOADED';
+                statusMessage.textContent = `"${file.name}" is ready!`;
+                statusMessage.className = 'status-message success';
+                progressBar.classList.remove('active');
+                playBtn.disabled = false;
+
+                // Hide download button after success
+                setTimeout(() => {
+                    downloadBtn.style.opacity = '0.6';
+                }, 500);
+
+            } catch (error) {
+                console.error('Download error:', error);
+                statusMessage.textContent = `Error: ${error.message}`;
+                statusMessage.className = 'status-message error';
+                progressBar.classList.remove('active');
+                downloadBtn.disabled = false;
+            }
+        }
+
+        // Google Authentication - OAuth 2.0 Implicit Flow
+        async function authenticateWithGoogle() {
+            return new Promise((resolve, reject) => {
+                try {
+                    // Generate a random state for security
+                    const state = Math.random().toString(36).substring(7);
+                    sessionStorage.setItem('oauth_state', state);
+
+                    // Build the OAuth URL using implicit flow (response_type=token)
+                    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
+                        `client_id=${CLIENT_ID}&` +
+                        `redirect_uri=${encodeURIComponent(window.location.origin + window.location.pathname)}&` +
+                        `response_type=token&` +
+                        `scope=${encodeURIComponent(SCOPES)}&` +
+                        `state=${state}`;
+
+                    // Open OAuth consent screen in popup
+                    const authWindow = window.open(
+                        authUrl,
+                        'google_auth',
+                        'width=500,height=600'
+                    );
+
+                    if (!authWindow) {
+                        reject(new Error('Failed to open authorization window. Please allow popups.'));
+                        return;
+                    }
+
+                    // Store the resolve/reject for the callback
+                    window.oauth_resolve = resolve;
+                    window.oauth_reject = reject;
+
+                    // Poll for the token in the URL hash
+                    let checkCount = 0;
+                    const checkInterval = setInterval(() => {
+                        checkCount++;
+
+                        try {
+                            // Check if the popup was closed
+                            if (authWindow.closed) {
+                                clearInterval(checkInterval);
+                                if (!window.oauth_complete) {
+                                    reject(new Error('Authorization window was closed'));
+                                }
+                                return;
+                            }
+
+                            // Check if we got a token in the hash
+                            const hash = window.location.hash.substring(1);
+                            if (hash) {
+                                const params = new URLSearchParams(hash);
+                                const token = params.get('access_token');
+                                const receivedState = params.get('state');
+
+                                if (token && receivedState === state) {
+                                    // Valid token received
+                                    clearInterval(checkInterval);
+                                    window.location.hash = ''; // Clear the hash
+                                    sessionStorage.removeItem('oauth_state');
+                                    localStorage.setItem(STORAGE_KEYS.authToken, token);
+                                    window.oauth_complete = true;
+                                    authWindow.close();
+                                    resolve(token);
+                                }
+                            }
+                        } catch (error) {
+                            console.error('Error checking for token:', error);
+                        }
+
+                        // Timeout after 5 minutes
+                        if (checkCount > 600) {
+                            clearInterval(checkInterval);
+                            reject(new Error('Authorization timeout'));
+                        }
+                    }, 500);
+
+                } catch (error) {
+                    reject(new Error(`Authentication error: ${error.message}`));
+                }
+            });
+        }
+
+        // Get latest audio file from Google Drive
+        async function getLatestAudioFileFromDrive(token) {
+            try {
+                const response = await fetch(
+                    `https://www.googleapis.com/drive/v3/files?` +
+                    `q='${GOOGLE_DRIVE_FOLDER_ID}'+in+parents+and+trashed=false+and+(mimeType='audio/mpeg'+or+mimeType='audio/mp4'+or+mimeType='audio/ogg'+or+mimeType='audio/wav')&` +
+                    `spaces=drive&` +
+                    `fields=files(id,name,mimeType,modifiedTime,size)&` +
+                    `orderBy=modifiedTime+desc&` +
+                    `pageSize=1`,
+                    {
+                        headers: {
+                            'Authorization': `Bearer ${token}`
+                        }
+                    }
+                );
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(`Google Drive API error: ${response.status} - ${errorData.error?.message || response.statusText}`);
+                }
+
+                const data = await response.json();
+                if (data.files && data.files.length > 0) {
+                    return data.files[0];
+                }
+
+                throw new Error('No audio files found in Google Drive folder');
+            } catch (error) {
+                console.error('Error fetching from Google Drive:', error);
+                throw error;
+            }
+        }
+
+        // Download file from Google Drive
+        async function downloadFileFromDrive(fileId, token) {
+            return new Promise((resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                xhr.open('GET', `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
+                xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+                xhr.responseType = 'blob';
+
+                xhr.upload.addEventListener('progress', (event) => {
+                    if (event.lengthComputable) {
+                        const percentComplete = (event.loaded / event.total) * 100;
+                        progressFill.style.width = percentComplete + '%';
+                        progressFill.textContent = Math.round(percentComplete) + '%';
+                    }
+                });
+
+                xhr.addEventListener('load', () => {
+                    if (xhr.status === 200) {
+                        resolve(xhr.response);
+                    } else {
+                        reject(new Error(`Download failed: ${xhr.status}`));
+                    }
+                });
+
+                xhr.addEventListener('error', () => reject(new Error('Network error')));
+                xhr.send();
+            });
+        }
+
+        // Save audio to IndexedDB for offline access
+        async function saveAudioToStorage(fileId, fileName, blob) {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open('AudiobookDB', 1);
+
+                request.onerror = () => reject(request.error);
+                request.onsuccess = () => {
+                    const db = request.result;
+                    const transaction = db.transaction(['audioFiles'], 'readwrite');
+                    const store = transaction.objectStore('audioFiles');
+
+                    // Delete old files
+                    store.clear();
+
+                    // Save new file
+                    store.put({
+                        fileId: fileId,
+                        fileName: fileName,
+                        blob: blob,
+                        timestamp: Date.now()
+                    });
+
+                    transaction.oncomplete = () => resolve();
+                    transaction.onerror = () => reject(transaction.error);
+                };
+
+                request.onupgradeneeded = (event) => {
+                    const db = event.target.result;
+                    if (!db.objectStoreNames.contains('audioFiles')) {
+                        db.createObjectStore('audioFiles', { keyPath: 'fileId' });
+                    }
+                };
+            });
+        }
+
+        // Load audio from storage
+        async function loadAudioFromStorage(fileId) {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open('AudiobookDB', 1);
+
+                request.onsuccess = () => {
+                    const db = request.result;
+                    const transaction = db.transaction(['audioFiles'], 'readonly');
+                    const store = transaction.objectStore('audioFiles');
+                    const getRequest = store.get(fileId);
+
+                    getRequest.onsuccess = () => {
+                        const file = getRequest.result;
+                        if (file && file.blob) {
+                            const url = URL.createObjectURL(file.blob);
+                            audioPlayer.src = url;
+
+                            // Restore playback position
+                            const savedPosition = localStorage.getItem(STORAGE_KEYS.playbackPosition);
+                            if (savedPosition) {
+                                audioPlayer.addEventListener('loadedmetadata', () => {
+                                    audioPlayer.currentTime = parseFloat(savedPosition);
+                                }, { once: true });
+                            }
+
+                            resolve();
+                        } else {
+                            reject(new Error('Audio file not found in storage'));
+                        }
+                    };
+                    getRequest.onerror = () => reject(getRequest.error);
+                };
+
+                request.onerror = () => reject(request.error);
+            });
+        }
+
+        // Handle Play
+        function handlePlay() {
+            if (audioPlayer.src) {
+                audioPlayer.play();
+                playBtn.textContent = '⏸ PLAYING...';
+                playBtn.disabled = false;
+                stopBtn.disabled = false;
+            }
+        }
+
+        // Handle Stop
+        function handleStop() {
+            audioPlayer.pause();
+            // Save playback position
+            localStorage.setItem(STORAGE_KEYS.playbackPosition, audioPlayer.currentTime.toString());
+            playBtn.textContent = '▶ PLAY';
+            stopBtn.disabled = true;
+            statusMessage.textContent = 'Saved where you stopped. Click PLAY to continue!';
+            statusMessage.className = 'status-message success';
+        }
+
+        // Handle Audio Ended
+        function handleAudioEnded() {
+            playBtn.textContent = '✓ FINISHED!';
+            statusMessage.textContent = 'You\'ve finished this audiobook! A new one will be available soon.';
+            statusMessage.className = 'status-message success';
+            // Clear stored position and file
+            localStorage.removeItem(STORAGE_KEYS.playbackPosition);
+            localStorage.removeItem(STORAGE_KEYS.currentFileId);
+            localStorage.removeItem(STORAGE_KEYS.currentFileName);
+            bookTitle.textContent = 'Waiting for next audiobook...';
+            downloadBtn.classList.remove('complete');
+            downloadBtn.textContent = '📥 DOWNLOAD';
+            downloadBtn.style.opacity = '1';
+            downloadBtn.disabled = false;
+            playBtn.disabled = true;
+        }
+    </script>
+</body>
+</html>
